@@ -1,0 +1,28 @@
+applications:
+  - name: case-merger
+    memory: 1024M
+    instances: 1
+    path: target\case-merger-1.0.0.jar
+
+    routes:
+      - route: case-merger.cfapps.us10-001.hana.ondemand.com
+
+    env:
+      JBP_CONFIG_OPEN_JDK_JRE: '{ jre: { version: 17.+ } }'
+      CASE_API_BASE_URL: "https://my1002287.us1.test.crm.cloud.sap"
+      CASE_API_USERNAME: "SERVICECLOUD_CASE_USER"
+      CASE_API_PASSWORD: "SCv2CASEapiUSER2026SecurePASS!!9845"   # keep your real value locally
+      MERGE_ENABLED: "true"
+      MERGE_FIXED_DELAY_MS: "300000"
+      MERGE_PAGE_SIZE: "200"
+      MERGE_MAX_PAGES: "50"
+      MERGE_TRACKING_FIELD: "TrackingNumber"
+      MERGE_REQUIRE_INDIVIDUAL_CUSTOMER: "true"
+      MERGE_EXCLUDE_ACCOUNT: "true"
+      MERGE_RELATED_CASE_TYPE: "2886"
+      MERGE_RELATED_CASE_ROLE: "14"
+      MERGE_STATUS_SCHEMA: "01"
+      MERGE_STATUS_COMPLETED: "Z5"
+      MERGE_STATUS_CLOSED: "06"
+      MERGE_LIFECYCLE_OPEN: "OPEN"
+      MERGE_LIFECYCLE_COMPLETED: "COMPLETED"

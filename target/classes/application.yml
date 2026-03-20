@@ -1,0 +1,38 @@
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+case-api:
+  base-url: ${CASE_API_BASE_URL}
+  username: ${CASE_API_USERNAME}
+  password: ${CASE_API_PASSWORD}
+
+merge:
+  enabled: ${MERGE_ENABLED:true}
+  fixed-delay-ms: ${MERGE_FIXED_DELAY_MS:300000}
+  page-size: ${MERGE_PAGE_SIZE:200}
+  max-pages: ${MERGE_MAX_PAGES:50}
+
+  tracking-field: ${MERGE_TRACKING_FIELD:TrackingNumber}
+  require-individual-customer: ${MERGE_REQUIRE_INDIVIDUAL_CUSTOMER:true}
+  exclude-account: ${MERGE_EXCLUDE_ACCOUNT:true}
+
+  related-case-type: ${MERGE_RELATED_CASE_TYPE:2886}
+  related-case-role: ${MERGE_RELATED_CASE_ROLE:14}
+
+  # Status progression (Open -> Completed -> Closed)
+  status-schema: ${MERGE_STATUS_SCHEMA:01}
+  status-completed: ${MERGE_STATUS_COMPLETED:05}
+  status-closed: ${MERGE_STATUS_CLOSED:06}
+
+  lifecycle-open: ${MERGE_LIFECYCLE_OPEN:OPEN}
+  lifecycle-completed: ${MERGE_LIFECYCLE_COMPLETED:COMPLETED}
+
+  spring:
+    codec:
+      max-in-memory-size: 5MB
