@@ -9,7 +9,7 @@ applications:
 
     env:
       JBP_CONFIG_OPEN_JDK_JRE: '{ jre: { version: 17.+ } }'
-      CASE_API_BASE_URL: "https://my1002287.us1.test.crm.cloud.sap"
+      CASE_API_BASE_URL: "https://my1002247.us1.crm.cloud.sap/"
       CASE_API_USERNAME: "SERVICECLOUD_CASE_USER"
       CASE_API_PASSWORD: "SCv2CASEapiUSER2026SecurePASS!!9845"   # keep your real value locally
       MERGE_ENABLED: "true"
