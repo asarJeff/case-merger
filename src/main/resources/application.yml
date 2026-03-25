@@ -25,14 +25,25 @@ merge:
   related-case-type: ${MERGE_RELATED_CASE_TYPE:2886}
   related-case-role: ${MERGE_RELATED_CASE_ROLE:14}
 
-  # Status progression (Open -> Completed -> Closed)
-  status-schema: ${MERGE_STATUS_SCHEMA:01}
-  status-completed: ${MERGE_STATUS_COMPLETED:05}
-  status-closed: ${MERGE_STATUS_CLOSED:06}
+  # Default status schema fallback (used only if a case has no statusSchema field)
+  status-schema: ${MERGE_STATUS_SCHEMA:Z2}
+
+  # Z5 = Solved (Completed) — intermediate step and terminal for Claims (Z2)
+  status-completed: ${MERGE_STATUS_COMPLETED:Z5}
+
+  # Default fallback terminal status if schema not found in schema-closed-status map
+  status-closed: ${MERGE_STATUS_CLOSED:Z5}
 
   lifecycle-open: ${MERGE_LIFECYCLE_OPEN:OPEN}
   lifecycle-completed: ${MERGE_LIFECYCLE_COMPLETED:COMPLETED}
 
-  spring:
-    codec:
-      max-in-memory-size: 5MB
+  # Per-schema terminal status mapping.
+  # Z2 (Claims)     — resolves at Z5 (Solved). Never transitions to 06.
+  # Z3 (Operations) — closes at 06 (Closed).
+  schema-closed-status:
+    Z2: ${MERGE_SCHEMA_CLOSED_STATUS_Z2:Z5}
+    Z3: ${MERGE_SCHEMA_CLOSED_STATUS_Z3:06}
+
+spring:
+  codec:
+    max-in-memory-size: 5MB

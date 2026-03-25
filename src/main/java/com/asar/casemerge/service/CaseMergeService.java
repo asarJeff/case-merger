@@ -53,12 +53,14 @@ public class CaseMergeService {
     @Value("${merge.parent-link-role:13}")
     private String parentLinkRole;
 
-    @Value("${merge.status-schema:01}")
+    @Value("${merge.status-schema:Z2}")
     private String statusSchema;
 
-    // Customer statuses:
-    // Z2 = New, Z3 = Open, Z5 = Solved, 06 = Closed
-    @Value("${merge.status-closed:06}")
+    // Status values:
+    // Z2 = New, Z3 = Open (active)
+    // Z5 = Solved (Completed) — terminal for Claims (Z2 schema)
+    // 06 = Closed — terminal for Operations (Z3 schema)
+    @Value("${merge.status-closed:Z5}")
     private String statusClosed;
 
     @Value("${merge.status-completed:Z5}")
@@ -69,6 +71,12 @@ public class CaseMergeService {
 
     @Value("${merge.lifecycle-completed:COMPLETED}")
     private String lifecycleCompleted;
+
+    // Per-schema terminal status map.
+    // Z2 (Claims) resolves at Z5 — never uses 06.
+    // Z3 (Operations) closes at 06.
+    @Value("#{${merge.schema-closed-status:{}}}")
+    private Map<String, String> schemaClosedStatusMap;
 
     public CaseMergeService(CaseApiClient api, ObjectMapper om) {
         this.api = api;
@@ -96,10 +104,8 @@ public class CaseMergeService {
         int skippedChildAlreadyHasParent = 0;
         int skippedNotIndividual = 0;
         int skippedAccountChild = 0;
-
         int skippedInactiveOrg = 0;
         int skippedInvalidExtension = 0;
-
         int skippedNotActiveStatus = 0;
         int failed = 0;
 
@@ -234,10 +240,10 @@ public class CaseMergeService {
                     // ✅ Flag as duplicate BEFORE closing so auto-flow suppresses email
                     markAsDuplicate(childId);
 
-                    // Close only after link
+                    // Close/resolve only after link
                     closeCase(childId);
 
-                    System.out.printf("[Tracking=%s] Closed case %s.%n",
+                    System.out.printf("[Tracking=%s] Resolved/closed case %s.%n",
                             tracking, childDisplay);
 
                     merged++;
@@ -292,7 +298,7 @@ public class CaseMergeService {
         System.out.println("--------------------------------------------------");
         System.out.println("Case Merge Run Summary");
         System.out.println("--------------------------------------------------");
-        System.out.printf("Merged (linked+closed): %d%n", merged);
+        System.out.printf("Merged (linked+resolved): %d%n", merged);
         System.out.printf("Skipped - Not Active Status (not Z2/Z3): %d%n", skippedNotActiveStatus);
         System.out.printf("Skipped - No Valid Root Parent: %d%n", skippedNoValidRoot);
         System.out.printf("Skipped - Parent Is Subcase: %d%n", skippedParentIsSubcase);
@@ -370,7 +376,7 @@ public class CaseMergeService {
         patch.put("parentCaseId", parentCaseId);
         patch.put("parentCaseDisplayId", parentCaseDisplayId);
 
-        // Merge relatedObjects (optional but matches your tenant’s GET pattern)
+        // Merge relatedObjects (optional but matches your tenant's GET pattern)
         ArrayNode related = (child != null && child.has("relatedObjects") && child.get("relatedObjects").isArray())
                 ? (ArrayNode) child.get("relatedObjects")
                 : om.createArrayNode();
@@ -418,31 +424,57 @@ public class CaseMergeService {
         System.out.printf("[markAsDuplicate] Set %s=true on case %s%n", duplicateCaseField, caseId);
     }
 
+    /**
+     * Resolves or closes a child case based on its status schema.
+     *
+     * Z2 (Claims) — terminal state is Z5 (Solved/Completed). Never transitions to 06.
+     * Z3 (Operations) — terminal state is 06 (Closed).
+     *
+     * The per-schema terminal status is driven by merge.schema-closed-status in application.yml,
+     * falling back to merge.status-closed if the schema is not mapped.
+     */
     private void closeCase(String caseId) throws Exception {
         JsonNode current = api.getCaseById(caseId);
 
         String currentStatus = text(current.get("status"));
         String currentSchema = text(current.get("statusSchema"));
 
-        if (statusClosed.equals(currentStatus)) return;
-
         String schemaToUse = (currentSchema == null || currentSchema.isBlank()) ? statusSchema : currentSchema;
 
-        // Open -> Completed (Solved)
+        // Resolve the correct terminal status for this schema.
+        // e.g. Z2 -> Z5 (Solved), Z3 -> 06 (Closed)
+        String terminalStatus = schemaClosedStatusMap.getOrDefault(schemaToUse, statusClosed);
+
+        System.out.printf("[closeCase] caseId=%s schema=%s terminalStatus=%s currentStatus=%s%n",
+                caseId, schemaToUse, terminalStatus, currentStatus);
+
+        // Already at terminal status — nothing to do
+        if (terminalStatus.equals(currentStatus)) {
+            System.out.printf("[closeCase] caseId=%s already at terminal status %s, skipping.%n",
+                    caseId, terminalStatus);
+            return;
+        }
+
+        // Step 1: Transition to Z5 (Solved/Completed) if not already there
         if (!statusCompleted.equals(currentStatus)) {
             ObjectNode toCompleted = om.createObjectNode();
             toCompleted.put("statusSchema", schemaToUse);
-            toCompleted.put("status", statusCompleted);
-            toCompleted.put("lifeCycleStatus", lifecycleOpen);
+            toCompleted.put("status", statusCompleted);         // Z5
+            toCompleted.put("lifeCycleStatus", lifecycleCompleted); // COMPLETED
             api.patchCaseWithEtag(caseId, toCompleted);
+            System.out.printf("[closeCase] caseId=%s transitioned to %s (Solved).%n", caseId, statusCompleted);
         }
 
-        // Completed -> Closed
-        ObjectNode toClosed = om.createObjectNode();
-        toClosed.put("statusSchema", schemaToUse);
-        toClosed.put("status", statusClosed);
-        toClosed.put("lifeCycleStatus", lifecycleCompleted);
-        api.patchCaseWithEtag(caseId, toClosed);
+        // Step 2: For schemas that support 06 (e.g. Z3), push to Closed.
+        // For Z2 (Claims), Z5 is the terminal state — skip this step.
+        if (!statusCompleted.equals(terminalStatus)) {
+            ObjectNode toClosed = om.createObjectNode();
+            toClosed.put("statusSchema", schemaToUse);
+            toClosed.put("status", terminalStatus);             // 06
+            toClosed.put("lifeCycleStatus", lifecycleCompleted);
+            api.patchCaseWithEtag(caseId, toClosed);
+            System.out.printf("[closeCase] caseId=%s transitioned to %s (Closed).%n", caseId, terminalStatus);
+        }
     }
 
     private static String text(JsonNode n) {
